@@ -1,0 +1,134 @@
+{-# LANGUAGE GADTs               #-}
+{-# LANGUAGE NamedFieldPuns      #-}
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+
+
+module Driver where
+
+
+import           Control.Applicative
+import           Control.Concurrent
+import           Control.Concurrent.MVar
+import           Control.Concurrent.STM
+import           Control.Concurrent.STM.TBQueue
+import           Control.Exception              (bracket, catch)
+import           Control.Monad                  (forM_, forever, replicateM)
+import           Data.Binary
+import           Data.Binary.Get
+import           Data.Binary.IEEE754
+import           Data.Binary.Put
+import           Data.Bits
+import           Data.ByteString
+import qualified Data.ByteString.Char8          as C8
+import qualified Data.ByteString.Lazy           as DBL
+import           Data.Int
+import qualified Data.IntMap                    as IM
+import           Data.List
+import qualified Data.Map.Strict                as DMS
+
+import           Codec
+import           Common
+import           Data.Maybe
+import           Data.Monoid                    as DM
+import           Data.UUID
+import           Debug.Trace
+import           Encoding
+import           GHC.Generics                   (Generic)
+import           GHC.IO.Handle                  (hClose, hFlush)
+import           Network
+
+
+
+init :: IO Candle
+init = do
+    streamNum <- newMVar 0
+    streams <- newMVar ([0..32767] :: [Int16])
+    streamMap <- newMVar (IM.empty :: (IM.IntMap (MVar (Either ShortStr Result))))
+    driverQ <- atomically $ newTBQueue 32768
+    channelQ <- atomically $ newTBQueue 32768
+    forkIO $ do
+      h <- connectTo "127.0.0.1" (PortNumber 9042)
+      -- print $ DBL.unpack $ encode $ ShortStr "CQL_VERSION"
+      let s = encode $ StringMap (DMS.fromList [(ShortStr "CQL_VERSION", ShortStr "3.0.0")])
+      -- print $ DBL.unpack s
+      let startup = DBL.toStrict $ DBL.pack [4, 0, 0, 1, 1] <> encode (fromIntegral (DBL.length s)::Int32) <> s
+      -- print $ unpack startup
+      hPut h startup
+      header <- hGet h 9
+      he <- pure $ runGet (get :: Get Header) $ DBL.fromStrict header
+      -- print he
+      payload <- hGet h (fromIntegral $ len he)
+      -- print payload
+      forkIO $ forever $ do
+        header1 <- hGet h 9
+        he1 <- pure $ runGet (get :: Get Header) $ DBL.fromStrict header1
+        -- print he1
+        p <- hGet h (fromIntegral $ len he1)
+        -- print p
+        if opcode he1 == 0
+          then do
+            -- print $ unpack p
+            let (erCode, erMsg) = runGet getErr (DBL.fromStrict p)
+            m <- takeMVar streamMap
+            let strm = stream he1
+            let fm = IM.lookup (fromIntegral strm :: Int) m
+            let mvar = fromJust fm
+            putMVar streamMap (IM.delete (fromIntegral strm :: Int) m)
+            strs <- takeMVar streams
+            putMVar streams (strs ++ [strm])
+            putMVar mvar (Left erMsg)
+          else do
+            let resultType = runGet (get :: Get Int32) (DBL.fromStrict p)
+            case resultType of
+              1 -> do
+                m <- takeMVar streamMap
+                let strm = stream he1
+                let fm = IM.lookup (fromIntegral strm :: Int) m
+                let mvar = fromJust fm
+                putMVar streamMap (IM.delete (fromIntegral strm :: Int) m)
+                strs <- takeMVar streams
+                putMVar streams (strs ++ [strm])
+                putMVar mvar (Right $ RRows [])
+              2 -> do
+                let rows = content $ runGet getRows (DBL.fromStrict $ C8.drop 4 p)
+                m <- takeMVar streamMap
+                let strm = stream he1
+                let fm = IM.lookup (fromIntegral strm :: Int) m
+                let mvar = fromJust fm
+                putMVar streamMap (IM.delete (fromIntegral strm :: Int) m)
+                strs <- takeMVar streams
+                putMVar streams (strs ++ [strm])
+                putMVar mvar (Right $ RRows rows)
+              4 -> do
+                let prep = runGet (get :: Get ShortBytes) (DBL.fromStrict $ C8.drop 4 p)
+                m <- takeMVar streamMap
+                let strm = stream he1
+                let fm = IM.lookup (fromIntegral strm :: Int) m
+                let mvar = fromJust fm
+                putMVar streamMap (IM.delete (fromIntegral strm :: Int) m)
+                strs <- takeMVar streams
+                putMVar streams (strs ++ [strm])
+                putMVar mvar (Right $ RPrepared prep)
+              5 -> do
+                print "result was 5"
+
+      forever $ do
+        bs <- atomically $ readTBQueue channelQ
+        hPut h bs
+
+    forkIO $ forever $ do
+      strs <- takeMVar streams
+      case Data.List.uncons strs of
+        Just (i, strsTail) -> do
+          putMVar streams strsTail
+          (bs, opc, mvar) <- atomically $ readTBQueue driverQ
+          m <- takeMVar streamMap
+          let m' = IM.insert (fromIntegral i :: Int) mvar m
+          putMVar streamMap m'
+          seq m' (return ())
+          let bs' = Data.ByteString.pack [4, 0] <> (DBL.toStrict $ encode i) <> Data.ByteString.pack [opc] <> (DBL.toStrict $ encode bs)
+          atomically $ writeTBQueue channelQ bs'
+        Nothing ->
+          return ()
+    return $ Candle driverQ
