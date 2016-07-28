@@ -12,28 +12,57 @@ It currently has:
 
 How it looks (looks pretty bad, but WIP) :
 ```Haskell
-candle <- CQL.init
-
-let q = select "demodb.transactions" # limit 1
-rows <- runCQL candle LOCAL_ONE q
-case rows of
-  Left err -> print err
-  Right rs -> print (fromRow (Prelude.head rs) (ShortStr "quantity")::Maybe Double)
-
-prep <- prepare candle "select * from demodb.transactions where vendor_id = ?"
-case prep of
-  Left er -> print er
-  Right p -> do
-    res <- execCQL candle LOCAL_ONE p [fromJust $ fromString "38d0ceb1-9e3e-427c-bc36-0106398f672b"]
-    let qw = update "demodb.products" # (with "name" (CQLString "some name")) # whre "vendor_id" (fromJust $ fromString "38d0ceb1-9e3e-427c-bc36-0106398f672b") # (aand "product_id" (fromJust $ fromString "069af83a-3104-433a-bf4d-ed23e8cd5c1a"))
-    res <- runBatch candle $ batch qw <> prepBatch p [fromJust $ fromString "38d0ceb1-9e3e-427c-bc36-0106398f672b"]
-    print res
+main :: IO ()
+main = do
+    ch <- CQL.init
     
-let attrs = select "demodb.products" # whre "vendor_id" (fromJust $ fromString "38d0ceb1-9e3e-427c-bc36-0106398f672b") # (aand "product_id" (fromJust $ fromString "9ad9c6a9-ee52-4e84-8b17-5e2c70975c00"))
-rows <- runCQL candle LOCAL_ONE attrs
-case rows of
-  Left err -> print err
-  Right rs -> do
-    print (fromRow (Prelude.head rs) (ShortStr "attributes")::Maybe (DMS.Map ShortStr ShortStr))
+    --create a keyspace
+    let q = create "keyspace demodb WITH REPLICATION = {'class' : 'SimpleStrategy','replication_factor': 1}"
+    runCQL ch LOCAL_ONE q
+    
+    --create a table
+    let q = create "TABLE demodb.emp (empID int,deptID int,alive boolean,id uuid,first_name varchar,last_name varchar,salary double,age bigint,PRIMARY KEY (empID, deptID))"
+    runCQL ch LOCAL_ONE q
+    
+    --execute prepared queries
+    prepq <- prepare ch "INSERT INTO demodb.emp (empID, deptID, alive, id, first_name, last_name, salary, age) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+    case prepq of
+      Left e -> print e
+      Right p -> do
+        res <- execCQL ch LOCAL_ONE p [
+          put (104::Int32),
+          put (15::Int32),
+          put True,
+          put $ fromJust $ fromString "38d0ceb1-9e3e-427c-bc36-0106398f672b",
+          put $ CQLString "Hot",
+          put $ CQLString "Shot",
+          putFloat64be 100000.0,
+          put (98763::Int64)]
+
+    --execute prepared queries and get results
+    prepq <- prepare ch "select empID, deptID, alive, id, first_name, last_name, salary, age from demodb.emp where empid = ? and deptid = ?"
+      case prepq of
+        Left e -> print e
+        Right p -> do
+          res <- execCQL ch LOCAL_ONE p [put (104::Int32), put (15::Int32)]
+          case res of
+            Left e -> print e
+            Right rs -> print $ (fromRow (Prelude.head rs) (ShortStr "salary")::Maybe Double)
+    
+    --select rows from table
+    let q = select "demodb.emp" # where' "empID" (104::Int32) # and' "deptID" (15::Int32)
+    rows <- runCQL ch LOCAL_ONE q
+    case rows of
+      Left e -> print e
+      Right rs -> print $ (fromRow (Prelude.head rs) (ShortStr "salary")::Maybe Double)
+
+    --drop a table
+    let q = drop' "table demodb.emp"
+    runCQL ch LOCAL_ONE q
+    
+    --drop a keyspace
+    let q = drop' "keyspace demodb"
+    runCQL ch LOCAL_ONE q
+
 ```
 
