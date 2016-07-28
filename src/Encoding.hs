@@ -1,4 +1,3 @@
-{-# LANGUAGE DeriveGeneric       #-}
 {-# LANGUAGE FlexibleInstances   #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE NamedFieldPuns      #-}
@@ -9,6 +8,7 @@
 module Encoding where
 
 
+import           Common
 import           Control.Applicative
 import           Control.Concurrent
 import           Control.Concurrent.MVar
@@ -28,8 +28,6 @@ import           Data.Int
 import qualified Data.IntMap                    as IM
 import           Data.List
 import qualified Data.Map.Strict                as DMS
-
-import           Common
 import           Data.Maybe
 import           Data.Monoid                    as DM
 import qualified Data.Set                       as Set
@@ -37,7 +35,6 @@ import           Data.UUID
 import           Debug.Trace
 import           GHC.Generics                   (Generic)
 import           GHC.IO.Handle                  (hClose, hFlush)
-
 import           Network
 
 

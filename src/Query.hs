@@ -38,6 +38,12 @@ import           GHC.IO.Handle                  (hClose, hFlush)
 import           Network
 
 
+create :: String -> Q
+create s = Query (ShortStr $ (DBL.fromStrict (C8.pack "create ")) <> (DBL.fromStrict $ C8.pack s <> " ")) []
+
+drop' :: String -> Q
+drop' s = Query (ShortStr $ (DBL.fromStrict (C8.pack "drop ")) <> (DBL.fromStrict $ C8.pack s <> " ")) []
+
 select :: String -> Q
 select s = Query (ShortStr $ (DBL.fromStrict (C8.pack "select * from ")) <> (DBL.fromStrict $ C8.pack s <> " ")) []
 
@@ -53,11 +59,11 @@ with n v = Query (ShortStr (DBL.fromStrict (C8.pack n) <> " = ? ")) [(DBL.toStri
 delete :: String -> Q
 delete s = Query (ShortStr $ "delete from " <> DBL.fromStrict (C8.pack s) <> " ") []
 
-whre :: (Binary k) => String -> k -> Q
-whre n v = Query (ShortStr (" where " <> DBL.fromStrict (C8.pack n) <> " = ? ")) [(DBL.toStrict . addLength . runPut . put) v]
+where' :: (Binary k) => String -> k -> Q
+where' n v = Query (ShortStr (" where " <> DBL.fromStrict (C8.pack n) <> " = ? ")) [(DBL.toStrict . addLength . runPut . put) v]
 
-aand :: (Binary k) =>  String -> k -> Q
-aand n v = Query (ShortStr (" and " <> DBL.fromStrict (C8.pack n) <> " = ? ")) [(DBL.toStrict . addLength . runPut . put) v]
+and' :: (Binary k) =>  String -> k -> Q
+and' n v = Query (ShortStr (" and " <> DBL.fromStrict (C8.pack n) <> " = ? ")) [(DBL.toStrict . addLength . runPut . put) v]
 
 
 prepare :: Candle -> ByteString -> IO (Either ShortStr Prepared)
@@ -82,11 +88,11 @@ runCQL (Candle driverQ) c (Query (ShortStr q) bs) = do
   return $ fmap (\r -> case r of RRows rows -> rows) res
 
 
-execCQL :: (Binary k) => Candle -> Consistency -> Prepared -> [k] -> IO (Either ShortStr [Row])
+execCQL :: Candle -> Consistency -> Prepared -> [Put] -> IO (Either ShortStr [Row])
 execCQL (Candle driverQ) c (Prepared pid) ls = do
   mvar <- newEmptyMVar
   let flag = if Data.List.null ls then 0x00 else 0x01
-  let q = encode pid <> (encode c <> encode (flag :: Int8)) <> encode (fromIntegral (Data.List.length ls) :: Int16) <> (mconcat $ fmap (addLength . runPut . put) ls)
+  let q = encode pid <> (encode c <> encode (flag :: Int8)) <> encode (fromIntegral (Data.List.length ls) :: Int16) <> (mconcat $ fmap (addLength . runPut) ls)
   atomically $ writeTBQueue driverQ (LongStr q, 10, mvar)
   res <- takeMVar mvar
   return $ fmap (\r -> case r of RRows rows -> rows) res
@@ -94,3 +100,5 @@ execCQL (Candle driverQ) c (Prepared pid) ls = do
 
 (#) :: Q -> Q -> Q
 (#) (Query s1 bs1) (Query s2 bs2) = Query (s1 <> s2) (bs1 <> bs2)
+
+infixl 7 #
