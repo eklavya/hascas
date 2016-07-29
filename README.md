@@ -64,5 +64,22 @@ main = do
     let q = drop' "keyspace demodb"
     runCQL ch LOCAL_ONE q
 
+    --batch queries
+    prepq <- prepare ch "INSERT INTO demodb.emp (empID, deptID, alive, id, first_name, last_name, salary, age) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+    case prepq of
+      Left e -> do
+              print e
+      Right p -> do
+              let q = batch (update "demodb.emp" # with "first_name" (CQLString "some name") # where' "empID" (104::Int32) # and' "deptID" (15::Int32)) <>
+                      batch (update "demodb.emp" # with "last_name" (CQLString "no name") # where' "empID" (104::Int32) # and' "deptID" (15::Int32)) <>
+                      prepBatch p [
+                        put (101::Int32),
+                        put (13::Int32),
+                        put True,
+                        put $ fromJust $ fromString "48d0ceb1-9e3e-427c-bc36-0106398f672b",
+                        put $ CQLString "Hot1",
+                        put $ CQLString "Shot1",
+                        putFloat64be 10000.0,
+                        put (9763::Int64)]
+              runBatch ch q
 ```
-

@@ -47,9 +47,9 @@ instance Batchable LoggedBatch where
     return $ fmap (\r -> case r of RRows rows -> rows) res
 
 
-prepBatch :: Binary k => Prepared -> [k] -> LoggedBatch
+prepBatch :: Prepared -> [Put] -> LoggedBatch
 prepBatch (Prepared pid) ks =
-  let b = encode (1::Int8) <> encode pid <> encode (fromIntegral (Data.List.length ks) :: Int16) <> (mconcat $ fmap (addLength . runPut . put) ks) in
+  let b = encode (1::Int8) <> encode pid <> encode (fromIntegral (Data.List.length ks) :: Int16) <> (mconcat $ fmap (addLength . runPut) ks) in
   LoggedBatch [b]
 
 
