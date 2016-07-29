@@ -39,7 +39,7 @@ main = do
 
     --execute prepared queries and get results
     p <- prepare ch "select empID, deptID, alive, id, first_name, last_name, salary, age from demodb.emp where empid = ? and deptid = ?"
-    res <- runExceptT $ execCQL ch LOCAL_ONE p [
+    res <- execCQL ch LOCAL_ONE p [
             put (104::Int32),
             put (15::Int32)]
     print $ (fromRow (Prelude.head res) (ShortStr "salary")::Maybe Double)
