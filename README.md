@@ -10,24 +10,22 @@ It currently has:
 * Prepared Queries
 * Batch Queries
 
-How it looks (looks pretty bad, but WIP) :
+How it looks :
 ```Haskell
 main :: IO ()
 main = do
-    ch <- CQL.init
+    candle <- CQL.init
 
-    --create a keyspace
-    let q = create "keyspace demodb WITH REPLICATION = {'class' : 'SimpleStrategy','replication_factor': 1}"
-    runCQL ch LOCAL_ONE q
+    (runReaderT . runExceptT) (do
+      let q = create "keyspace demodb WITH REPLICATION = {'class' : 'SimpleStrategy','replication_factor': 1}"
+      runCQL LOCAL_ONE q
+      --create a table
+      let q = create "TABLE demodb.emp (empID int,deptID int,alive boolean,id uuid,first_name varchar,last_name varchar,salary double,age bigint,PRIMARY KEY (empID, deptID))"
+      runCQL LOCAL_ONE q
 
-
-    --create a table
-    let q = create "TABLE demodb.emp (empID int,deptID int,alive boolean,id uuid,first_name varchar,last_name varchar,salary double,age bigint,PRIMARY KEY (empID, deptID))"
-    runCQL ch LOCAL_ONE q
-
-    --execute prepared queries
-    p <- prepare ch "INSERT INTO demodb.emp (empID, deptID, alive, id, first_name, last_name, salary, age) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
-    execCQL ch LOCAL_ONE p [
+      --execute prepared queries
+      p <- prepare "INSERT INTO demodb.emp (empID, deptID, alive, id, first_name, last_name, salary, age) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+      execCQL LOCAL_ONE p [
             put (104::Int32),
             put (15::Int32),
             put True,
@@ -37,29 +35,29 @@ main = do
             putFloat64be 100000.0,
             put (98763::Int64)]
 
-    --execute prepared queries and get results
-    p <- prepare ch "select empID, deptID, alive, id, first_name, last_name, salary, age from demodb.emp where empid = ? and deptid = ?"
-    res <- execCQL ch LOCAL_ONE p [
+      --execute prepared queries and get results
+      p <- prepare "select empID, deptID, alive, id, first_name, last_name, salary, age from demodb.emp where empid = ? and deptid = ?"
+      res <- execCQL LOCAL_ONE p [
             put (104::Int32),
             put (15::Int32)]
-    print $ (fromRow (Prelude.head res) (ShortStr "salary")::Maybe Double)
+      liftIO $ print (fromRow (Prelude.head res) (ShortStr "salary")::Maybe Double)
 
-    --select rows from table
-    let q = select "demodb.emp" # where' "empID" (104::Int32) # and' "deptID" (15::Int32)
-    rows <- runCQL ch LOCAL_ONE q
-    print $ (fromRow (Prelude.head rows) (ShortStr "salary")::Maybe Double)
+      --select rows from table
+      let q = select "demodb.emp" # where' "empID" (104::Int32) # and' "deptID" (15::Int32)
+      rows <- runCQL LOCAL_ONE q
+      liftIO $ print (fromRow (Prelude.head rows) (ShortStr "salary")::Maybe Double)
 
-    --drop a table
-    let q = drop' "table demodb.emp"
-    runCQL ch LOCAL_ONE q
+      --drop a table
+      let q = drop' "table demodb.emp"
+      runCQL LOCAL_ONE q
 
-    --drop a keyspace
-    let q = drop' "keyspace demodb"
-    runCQL ch LOCAL_ONE q
+      --drop a keyspace
+      let q = drop' "keyspace demodb"
+      runCQL LOCAL_ONE q
 
-    --batch queries
-    p <- prepare ch "INSERT INTO demodb.emp (empID, deptID, alive, id, first_name, last_name, salary, age) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
-    let q = batch (update "demodb.emp" # with "first_name" (CQLString "some name") # where' "empID" (104::Int32) # and' "deptID" (15::Int32)) <>
+      --batch queries
+      p <- prepare "INSERT INTO demodb.emp (empID, deptID, alive, id, first_name, last_name, salary, age) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+      let q = batch (update "demodb.emp" # with "first_name" (CQLString "some name") # where' "empID" (104::Int32) # and' "deptID" (15::Int32)) <>
             batch (update "demodb.emp" # with "last_name" (CQLString "no name") # where' "empID" (104::Int32) # and' "deptID" (15::Int32)) <>
             prepBatch p [
                         put (101::Int32),
@@ -70,5 +68,7 @@ main = do
                         put $ CQLString "Shot1",
                         putFloat64be 10000.0,
                         put (9763::Int64)]
-    runBatch ch q
+      runBatch q) candle
+    return ()
+
 ```

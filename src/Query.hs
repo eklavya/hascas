@@ -15,6 +15,7 @@ import           Control.Concurrent.STM.TBQueue
 import           Control.Exception              (bracket, catch)
 import           Control.Monad                  (forM_, forever, replicateM)
 import           Control.Monad.Except
+import           Control.Monad.Reader
 import           Data.Binary
 import           Data.Binary.Get
 import           Data.Binary.IEEE754
@@ -67,8 +68,9 @@ and' :: (Binary k) =>  String -> k -> Q
 and' n v = Query (ShortStr (" and " <> DBL.fromStrict (C8.pack n) <> " = ? ")) [(DBL.toStrict . addLength . runPut . put) v]
 
 
-prepare :: Candle -> ByteString -> ExceptT ShortStr IO Prepared
-prepare (Candle driverQ) q = do
+prepare :: ByteString -> ExceptT ShortStr (ReaderT Candle IO) Prepared
+prepare q = do
+  (Candle driverQ) <- ask
   mvar <- liftIO newEmptyMVar
   let len = fromIntegral (C8.length q)::Int32
   let hd = encode len <> DBL.fromStrict q
@@ -79,8 +81,9 @@ prepare (Candle driverQ) q = do
     Right (RPrepared sb) -> return $ Prepared sb
 
 
-runCQL :: Candle -> Consistency -> Q -> ExceptT ShortStr IO [Row]
-runCQL (Candle driverQ) c (Query (ShortStr q) bs) = do
+runCQL :: Consistency -> Q -> ExceptT ShortStr (ReaderT Candle IO) [Row]
+runCQL c (Query (ShortStr q) bs) = do
+  (Candle driverQ) <- ask
   mvar <- liftIO newEmptyMVar
   let flagAndNum = if Data.List.null bs then encode (0x00 :: Int8) else encode (0x01 :: Int8) <> encode (fromIntegral (Data.List.length bs) :: Int16)
   let q' = q <> encode c <> flagAndNum <> DBL.fromStrict (mconcat bs)
@@ -93,8 +96,9 @@ runCQL (Candle driverQ) c (Query (ShortStr q) bs) = do
     Right (RRows rows) -> return rows
 
 
-execCQL :: Candle -> Consistency -> Prepared -> [Put] -> ExceptT ShortStr IO [Row]
-execCQL (Candle driverQ) c (Prepared pid) ls = do
+execCQL :: Consistency -> Prepared -> [Put] -> ExceptT ShortStr (ReaderT Candle IO) [Row]
+execCQL c (Prepared pid) ls = do
+  (Candle driverQ) <- ask
   mvar <- liftIO newEmptyMVar
   let flag = if Data.List.null ls then 0x00 else 0x01
   let q = encode pid <> (encode c <> encode (flag :: Int8)) <> encode (fromIntegral (Data.List.length ls) :: Int16) <> mconcat (fmap (addLength . runPut) ls)

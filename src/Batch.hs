@@ -16,6 +16,7 @@ import           Control.Concurrent.STM.TBQueue
 import           Control.Exception              (bracket, catch)
 import           Control.Monad                  (forM_, forever, replicateM)
 import           Control.Monad.Except
+import           Control.Monad.Reader
 import           Data.Binary
 import           Data.Binary.Get
 import           Data.Binary.IEEE754
@@ -40,7 +41,8 @@ import           Network
 
 
 instance Batchable LoggedBatch where
-  runBatch (Candle driverQ) (LoggedBatch qs) = do
+  runBatch (LoggedBatch qs) = do
+    (Candle driverQ)  <- ask
     mvar <- liftIO newEmptyMVar
     let q = encode (0::Int8) <> encode (fromIntegral (Data.List.length qs) :: Int16) <> mconcat qs <> encode SERIAL <> encode (0x00 :: Int8)
     liftIO $ atomically $ writeTBQueue driverQ (LongStr q, 13, mvar)
