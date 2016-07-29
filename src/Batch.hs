@@ -15,6 +15,7 @@ import           Control.Concurrent.STM
 import           Control.Concurrent.STM.TBQueue
 import           Control.Exception              (bracket, catch)
 import           Control.Monad                  (forM_, forever, replicateM)
+import           Control.Monad.Except
 import           Data.Binary
 import           Data.Binary.Get
 import           Data.Binary.IEEE754
@@ -40,20 +41,22 @@ import           Network
 
 instance Batchable LoggedBatch where
   runBatch (Candle driverQ) (LoggedBatch qs) = do
-    mvar <- newEmptyMVar
+    mvar <- liftIO newEmptyMVar
     let q = encode (0::Int8) <> encode (fromIntegral (Data.List.length qs) :: Int16) <> mconcat qs <> encode SERIAL <> encode (0x00 :: Int8)
-    atomically $ writeTBQueue driverQ (LongStr q, 13, mvar)
-    res <- takeMVar mvar
-    return $ fmap (\r -> case r of RRows rows -> rows) res
+    liftIO $ atomically $ writeTBQueue driverQ (LongStr q, 13, mvar)
+    res <- liftIO $ takeMVar mvar
+    case res of
+      Left e -> throwError e
+      Right (RRows rows) -> return rows
 
 
 prepBatch :: Prepared -> [Put] -> LoggedBatch
 prepBatch (Prepared pid) ks =
-  let b = encode (1::Int8) <> encode pid <> encode (fromIntegral (Data.List.length ks) :: Int16) <> (mconcat $ fmap (addLength . runPut) ks) in
+  let b = encode (1::Int8) <> encode pid <> encode (fromIntegral (Data.List.length ks) :: Int16) <> mconcat (fmap (addLength . runPut) ks) in
   LoggedBatch [b]
 
 
 batch :: Q -> LoggedBatch
 batch (Query (ShortStr q) bs) =
-  let b = encode (0::Int8) <> encode (fromIntegral (DBL.length q) :: Int32) <> q <> encode (fromIntegral (Data.List.length bs) :: Int16) <> (mconcat $ fmap (DBL.fromStrict) bs) in
+  let b = encode (0::Int8) <> encode (fromIntegral (DBL.length q) :: Int32) <> q <> encode (fromIntegral (Data.List.length bs) :: Int16) <> mconcat (fmap DBL.fromStrict bs) in
     LoggedBatch [b]

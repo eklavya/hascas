@@ -16,6 +16,7 @@ import           Control.Concurrent.STM
 import           Control.Concurrent.STM.TBQueue
 import           Control.Exception              (bracket, catch)
 import           Control.Monad                  (forM_, forever, replicateM)
+import           Control.Monad.Except
 import           Data.Binary
 import           Data.Binary.Get
 import           Data.Binary.IEEE754
@@ -43,7 +44,7 @@ import           Text.Printf                    (printf)
 
 
 class Batchable a where
-  runBatch :: Candle -> a -> IO (Either ShortStr [Row])
+  runBatch :: Candle -> a -> ExceptT ShortStr IO [Row]
 
 newtype BatchQuery = BatchQuery DBL.ByteString
 
