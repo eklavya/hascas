@@ -52,6 +52,21 @@ instance Binary StringMap where
     return $ StringMap $ DMS.fromList pl
 
 
+getColumnSpec ksname tname = do
+  colName <- get
+  tpe <- get
+  case tpe of
+    t | t == 32 || t == 34 -> do
+      elTpe <- get
+      return ColumnSpec {ksname = ksname, tname = tname, colName, tpe, elTpe = Just elTpe, elTpeV = Nothing}
+    33 -> do
+      elTpe <- get
+      elTpeV <- get
+      return ColumnSpec {ksname = ksname, tname = tname, colName, tpe, elTpe = Just elTpe, elTpeV = Just elTpeV}
+    _ ->
+      return ColumnSpec {ksname = ksname, tname = tname, colName, tpe, elTpe = Nothing, elTpeV = Nothing}
+
+
 getMeta :: Get Metadata
 getMeta = do
   mflags <- get
@@ -59,44 +74,14 @@ getMeta = do
   if mflags .&. 1 == 1
     then do
       gts <- get :: Get GlobalTableSpec
-      colSpecs <- replicateM (fromIntegral numCols :: Int) $ do
-        colName <- get
-        tpe <- get
-        case tpe of
-          32 -> do
-            elTpe <- get
-            return ColumnSpec {ksname = Nothing, tname = Nothing, colName, tpe, elTpe = Just elTpe, elTpeV = Nothing}
-          34 -> do
-            elTpe <- get
-            return ColumnSpec {ksname = Nothing, tname = Nothing, colName, tpe, elTpe = Just elTpe, elTpeV = Nothing}
-          33 -> do
-            elTpe <- get
-            elTpeV <- get
-            return ColumnSpec {ksname = Nothing, tname = Nothing, colName, tpe, elTpe = Just elTpe, elTpeV = Just elTpeV}
-          _ ->
-            return ColumnSpec {ksname = Nothing, tname = Nothing, colName, tpe, elTpe = Nothing, elTpeV = Nothing}
+      colSpecs <- replicateM (fromIntegral numCols :: Int) $ getColumnSpec Nothing Nothing
       return Metadata {mflags, numCols, gts = Just gts, colSpecs}
     else do
       colSpecs <- replicateM (fromIntegral numCols :: Int) $ do
         ksname <- get :: Get ShortStr
         tname <- get :: Get ShortStr
-        colName <- get
-        tpe <- get
-        case tpe of
-          32 -> do
-            elTpe <- get
-            return ColumnSpec {ksname = Nothing, tname = Nothing, colName, tpe, elTpe = Just elTpe, elTpeV = Nothing}
-          34 -> do
-            elTpe <- get
-            return ColumnSpec {ksname = Nothing, tname = Nothing, colName, tpe, elTpe = Just elTpe, elTpeV = Nothing}
-          33 -> do
-            elTpe <- get
-            elTpeV <- get
-            return ColumnSpec {ksname = Nothing, tname = Nothing, colName, tpe, elTpe = Just elTpe, elTpeV = Just elTpeV}
-          _ ->
-            return ColumnSpec {ksname = Nothing, tname = Nothing, colName, tpe, elTpe = Nothing, elTpeV = Nothing}
+        getColumnSpec (Just ksname) (Just tname)
       return Metadata {mflags, numCols, gts = Nothing, colSpecs}
-
 
 
 getRows :: Get Rows
@@ -146,5 +131,3 @@ instance (FromCQL k, FromCQL v, Ord k, Binary k, Binary v) => FromCQL (DMS.Map k
         return (kv, vv)
       return $ DMS.fromList ls
     ) b) <$> DMS.lookup s r
-
-
