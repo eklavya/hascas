@@ -20,7 +20,6 @@ import           Control.Monad.Except
 import           CQL
 import           Data.Binary
 import           Data.Binary.Get
-import           Data.Binary.IEEE754
 import           Data.Binary.Put
 import           Data.Bits
 import           Data.ByteString
@@ -59,7 +58,7 @@ main = do
             put $ fromJust $ fromString "38d0ceb1-9e3e-427c-bc36-0106398f672b",
             put $ CQLString "Hot",
             put $ CQLString "Shot",
-            putFloat64be 100000.0,
+            put $ CQLDouble 100000.0,
             put (98763::Int64)]
 
       --execute prepared queries and get results
@@ -85,7 +84,7 @@ main = do
                         put $ fromJust $ fromString "48d0ceb1-9e3e-427c-bc36-0106398f672b",
                         put $ CQLString "Hot1",
                         put $ CQLString "Shot1",
-                        putFloat64be 10000.0,
+                        put $ CQLDouble 10000.0,
                         put (9763::Int64)]
       runBatch q
 
