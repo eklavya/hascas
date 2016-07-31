@@ -1,17 +1,44 @@
-# hascas
-Cassandra CQL driver for haskell
+{-# LANGUAGE FlexibleInstances   #-}
+{-# LANGUAGE GADTs               #-}
+{-# LANGUAGE NamedFieldPuns      #-}
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
-This is a *work in progress* driver for cassandra.
-It currently has:
-* Select
-* Insert
-* Update
-* Delete
-* Prepared Queries
-* Batch Queries
 
-How it looks :
-```Haskell
+module Main where
+
+
+import           Control.Applicative
+import           Control.Concurrent
+import           Control.Concurrent.MVar
+import           Control.Concurrent.STM
+import           Control.Concurrent.STM.TBQueue
+import           Control.Exception              (bracket, catch)
+import           Control.Monad                  (forM_, forever, replicateM)
+import           Control.Monad.Reader
+import           Control.Monad.Except
+import           CQL
+import           Data.Binary
+import           Data.Binary.Get
+import           Data.Binary.IEEE754
+import           Data.Binary.Put
+import           Data.Bits
+import           Data.ByteString
+import qualified Data.ByteString.Char8          as C8
+import qualified Data.ByteString.Lazy           as DBL
+import           Data.Int
+import qualified Data.IntMap                    as IM
+import           Data.List
+import qualified Data.Map.Strict                as DMS
+import           Data.Maybe
+import           Data.Monoid                    as DM
+import           Data.UUID
+import           Debug.Trace
+import           GHC.Generics                   (Generic)
+import           GHC.IO.Handle                  (hClose, hFlush)
+import           Network
+
+
 main :: IO ()
 main = do
     candle <- CQL.init "127.0.0.1" (PortNumber 9042)
@@ -71,5 +98,3 @@ main = do
       runCQL LOCAL_ONE q
 
     print res
-
-```

@@ -44,7 +44,7 @@ import           Network
 
 main :: IO ()
 main = do
-    ch <- CQL.init
+    ch <- CQL.init "127.0.0.1" (PortNumber 9042)
 
     hspec $
       describe "driver should be able to" $ do

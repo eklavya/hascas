@@ -118,18 +118,15 @@ sendThread h streams streamMap driverQ = do
   return ()
 
 
-init :: IO Candle
-init = do
+init :: HostName -> PortID -> IO Candle
+init host port = do
     streamNum <- newMVar 0
     streams <- newMVar ([0..32767] :: [Int16])
     streamMap <- newMVar (IM.empty :: (IM.IntMap (MVar (Either ShortStr Result))))
     driverQ <- atomically $ newTBQueue 32768
 
-    h <- connectTo "127.0.0.1" (PortNumber 9042)
+    h <- connectTo host port
     startUp h
     receiveThread h streams streamMap
     sendThread h streams streamMap driverQ
     return $ Candle driverQ
-
-
-
