@@ -2,6 +2,9 @@
 Cassandra CQL driver for haskell
 
 This is a *work in progress* driver for cassandra.
+
+*We now have automatic record conversion.*
+
 It currently has:
 * Select
 * Insert
@@ -9,9 +12,18 @@ It currently has:
 * Delete
 * Prepared Queries
 * Batch Queries
+* Get Records
+
+# Example
+Look at the project in the example directory.
 
 How it looks :
 ```Haskell
+data Emp = Emp { empID :: Int32, deptID :: Int32, alive :: Bool , id :: UUID, first_name :: CQLString, last_name :: CQLString, salary :: CQLDouble, age :: Int64 }
+  deriving(Show, Eq)
+
+deriveBuildRec ''Emp
+
 main :: IO ()
 main = do
     candle <- CQL.init "127.0.0.1" (PortNumber 9042)
@@ -40,12 +52,14 @@ main = do
       res <- execCQL LOCAL_ONE p [
             put (104::Int32),
             put (15::Int32)]
-      liftIO $ print (fromRow (Prelude.head res) (ShortStr "salary")::Maybe Double)
+      liftIO $ print $ catMaybes ((fmap fromRow res)::[Maybe Emp])
+      liftIO $ print (fromCQL (Prelude.head res) (CQLString "salary")::Maybe Double)
+      liftIO $ print (fromCQL (Prelude.head res) (CQLString "first_name")::Maybe CQLString)
 
       --select rows from table
       let q = select "demodb.emp" # where' "empID" (104::Int32) # and' "deptID" (15::Int32)
       rows <- runCQL LOCAL_ONE q
-      liftIO $ print (fromRow (Prelude.head rows) (ShortStr "salary")::Maybe Double)
+      liftIO $ print $ catMaybes ((fmap fromRow res)::[Maybe Emp])
 
       --batch queries
       p <- prepare "INSERT INTO demodb.emp (empID, deptID, alive, id, first_name, last_name, salary, age) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
@@ -71,5 +85,4 @@ main = do
       runCQL LOCAL_ONE q
 
     print res
-
 ```

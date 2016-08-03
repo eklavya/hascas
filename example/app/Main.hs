@@ -3,6 +3,7 @@
 {-# LANGUAGE NamedFieldPuns      #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TemplateHaskell     #-}
 
 
 module Main where
@@ -15,8 +16,8 @@ import           Control.Concurrent.STM
 import           Control.Concurrent.STM.TBQueue
 import           Control.Exception              (bracket, catch)
 import           Control.Monad                  (forM_, forever, replicateM)
-import           Control.Monad.Reader
 import           Control.Monad.Except
+import           Control.Monad.Reader
 import           CQL
 import           Data.Binary
 import           Data.Binary.Get
@@ -28,6 +29,7 @@ import qualified Data.ByteString.Lazy           as DBL
 import           Data.Int
 import qualified Data.IntMap                    as IM
 import           Data.List
+import           Data.Map.Strict                (lookup)
 import qualified Data.Map.Strict                as DMS
 import           Data.Maybe
 import           Data.Monoid                    as DM
@@ -37,6 +39,11 @@ import           GHC.Generics                   (Generic)
 import           GHC.IO.Handle                  (hClose, hFlush)
 import           Network
 
+
+data Emp = Emp { empID :: Int32, deptID :: Int32, alive :: Bool , id :: UUID, first_name :: CQLString, last_name :: CQLString, salary :: CQLDouble, age :: Int64 }
+  deriving(Show, Eq)
+
+deriveBuildRec ''Emp
 
 main :: IO ()
 main = do
@@ -66,12 +73,14 @@ main = do
       res <- execCQL LOCAL_ONE p [
             put (104::Int32),
             put (15::Int32)]
-      liftIO $ print (fromRow (Prelude.head res) (ShortStr "salary")::Maybe Double)
+      liftIO $ print $ catMaybes ((fmap fromRow res)::[Maybe Emp])
+      liftIO $ print (fromCQL (Prelude.head res) (CQLString "salary")::Maybe Double)
+      liftIO $ print (fromCQL (Prelude.head res) (CQLString "first_name")::Maybe CQLString)
 
       --select rows from table
       let q = select "demodb.emp" # where' "empID" (104::Int32) # and' "deptID" (15::Int32)
       rows <- runCQL LOCAL_ONE q
-      liftIO $ print (fromRow (Prelude.head rows) (ShortStr "salary")::Maybe Double)
+      liftIO $ print $ catMaybes ((fmap fromRow res)::[Maybe Emp])
 
       --batch queries
       p <- prepare "INSERT INTO demodb.emp (empID, deptID, alive, id, first_name, last_name, salary, age) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"

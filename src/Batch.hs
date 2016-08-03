@@ -55,7 +55,7 @@ instance Batchable LoggedBatch where
 prepBatch :: Prepared -> [Put] -> LoggedBatch
 prepBatch (Prepared pid) ks =
   let b = encode (1::Int8) <> encode pid <> encode (fromIntegral (Data.List.length ks) :: Int16) <> mconcat (fmap (addLength . runPut) ks) in
-  LoggedBatch [b]
+    LoggedBatch [b]
 
 
 batch :: Q -> LoggedBatch

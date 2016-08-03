@@ -104,5 +104,5 @@ instance (Binary a, Ord a) => Binary (CQLList a) where
         put l)
 
 instance Binary CQLString where
-  get = (CQLString . DBL.toStrict) <$> getLazyByteStringNul --it's ok, we never actually call this
+  get = (CQLString . DBL.toStrict) <$> getRemainingLazyByteString
   put (CQLString s) = putByteString s

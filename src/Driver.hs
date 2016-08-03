@@ -111,7 +111,6 @@ sendThread h streams streamMap driverQ = do
               seq m' (return ())
               let bs' = Data.ByteString.pack [4, 0] <> DBL.toStrict (encode i <> DBL.pack [opc] <> encode bs)
               hPut h bs'
-              -- atomically $ writeTBQueue channelQ bs'
             Nothing -> do
               putMVar streams strs
               sendThread h streams streamMap driverQ

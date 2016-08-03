@@ -22,6 +22,7 @@ library
                      , Encoding
                      , Query
                      , Common
+                     , Derive
   build-depends:       base >= 4.7 && < 5
                      , bytestring
                      , binary
@@ -31,6 +32,7 @@ library
                      , stm
                      , data-binary-ieee754
                      , mtl
+                     , template-haskell
   default-language:    Haskell2010
 
 test-suite hascas-test
@@ -48,6 +50,7 @@ test-suite hascas-test
                      , data-binary-ieee754
                      , hspec
                      , mtl
+                     , template-haskell
   ghc-options:         -threaded -rtsopts -with-rtsopts=-N
   default-language:    Haskell2010
 

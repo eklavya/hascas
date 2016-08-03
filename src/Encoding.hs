@@ -90,36 +90,37 @@ getRows = do
   numRows <- get :: Get Int32
   rs <- replicateM (fromIntegral numRows :: Int) $ mapM (\cs -> do
       r <- get :: Get Bytes
-      return (colName cs, (tpe cs, elTpe cs, elTpeV cs, r))) $ colSpecs meta
+      let (ShortStr s) = colName cs
+      return (CQLString $ DBL.toStrict s, (tpe cs, elTpe cs, elTpeV cs, r))) $ colSpecs meta
   return Rows { content = fmap DMS.fromList rs}
 
 
 instance FromCQL Int8 where
-  fromRow r s = (\(_, _, _, Bytes b) -> runGet (get :: Get Int8) b) <$> DMS.lookup s r
+  fromCQL r s = (\(_, _, _, Bytes b) -> runGet (get :: Get Int8) b) <$> DMS.lookup s r
 
 instance FromCQL Int16 where
-  fromRow r s = (\(_, _, _, Bytes b) -> runGet (get :: Get Int16) b) <$> DMS.lookup s r
+  fromCQL r s = (\(_, _, _, Bytes b) -> runGet (get :: Get Int16) b) <$> DMS.lookup s r
 
 instance FromCQL Int32 where
-  fromRow r s = (\(_, _, _, Bytes b) -> runGet (get :: Get Int32) b) <$> DMS.lookup s r
+  fromCQL r s = (\(_, _, _, Bytes b) -> runGet (get :: Get Int32) b) <$> DMS.lookup s r
 
 instance FromCQL Int64 where
-  fromRow r s = (\(_, _, _, Bytes b) -> runGet (get :: Get Int64) b) <$> DMS.lookup s r
+  fromCQL r s = (\(_, _, _, Bytes b) -> runGet (get :: Get Int64) b) <$> DMS.lookup s r
 
 instance FromCQL Double where
-  fromRow r s = (\(_, _, _, Bytes b) -> runGet getFloat64be b) <$> DMS.lookup s r
+  fromCQL r s = (\(_, _, _, Bytes b) -> runGet getFloat64be b) <$> DMS.lookup s r
 
 instance FromCQL Bool where
-  fromRow r s = (\(_, _, _, Bytes b) -> runGet (get :: Get Bool) b) <$> DMS.lookup s r
+  fromCQL r s = (\(_, _, _, Bytes b) -> runGet (get :: Get Bool) b) <$> DMS.lookup s r
 
 instance FromCQL UUID where
-  fromRow r s = (\(_, _, _, Bytes b) -> runGet (get :: Get UUID) b) <$> DMS.lookup s r
+  fromCQL r s = (\(_, _, _, Bytes b) -> runGet (get :: Get UUID) b) <$> DMS.lookup s r
 
-instance FromCQL ShortStr where
-  fromRow r s = (\(_, _, _, Bytes b) -> ShortStr b) <$> DMS.lookup s r
+instance FromCQL CQLString where
+  fromCQL r s = (\(_, _, _, Bytes b) -> (CQLString . DBL.toStrict) b) <$> DMS.lookup s r
 
 instance (FromCQL k, FromCQL v, Ord k, Binary k, Binary v) => FromCQL (DMS.Map k v) where
-  fromRow r s =  (\(_, kt, vt, Bytes b) -> runGet (if DBL.length b == 0
+  fromCQL r s =  (\(_, kt, vt, Bytes b) -> runGet (if DBL.length b == 0
     then
       pure DMS.empty
     else

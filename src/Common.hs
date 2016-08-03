@@ -138,15 +138,18 @@ data RowContent = RowContent {
 
 
 data Rows = Rows {
-  content :: [DMS.Map ShortStr (Word16, Maybe Word16, Maybe Word16, Bytes)]
+  content :: [Row]
 }
   deriving(Show)
 
-type Row = DMS.Map ShortStr (Word16, Maybe Word16, Maybe Word16, Bytes)
+type Row = DMS.Map CQLString (Word16, Maybe Word16, Maybe Word16, Bytes)
 
+
+class BuildRec a where
+  fromRow :: Row -> Maybe a
 
 class FromCQL a where
-  fromRow :: Row -> ShortStr -> Maybe a
+  fromCQL :: Row -> CQLString -> Maybe a
 
 instance Monoid ShortStr where
   mempty = ShortStr ""
