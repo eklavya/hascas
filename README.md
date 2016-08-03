@@ -19,7 +19,16 @@ Look at the project in the example directory.
 
 How it looks :
 ```Haskell
-data Emp = Emp { empID :: Int32, deptID :: Int32, alive :: Bool , id :: UUID, first_name :: CQLString, last_name :: CQLString, salary :: CQLDouble, age :: Int64 }
+data Emp = Emp {
+  empID      :: Int32,
+  deptID     :: Int32,
+  alive      :: Bool ,
+  id         :: UUID,
+  first_name :: CQLString,
+  last_name  :: CQLString,
+  salary     :: CQLDouble,
+  age        :: Int64
+}
   deriving(Show, Eq)
 
 deriveBuildRec ''Emp
