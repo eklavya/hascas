@@ -54,16 +54,20 @@ instance (Ord k, Binary k, Binary v) => Binary (CQLMap k v) where
         do
           num <- get :: Get Int32
           ls <- replicateM (fromIntegral num :: Int) $ do
-            kv <- get :: Get k
-            vv <- get :: Get v
+            r <- get :: Get Bytes
+            let Bytes b = r
+            let kv = runGet (get :: Get k) b
+            r <- get :: Get Bytes
+            let Bytes b = r
+            let vv = runGet (get :: Get v) b
             return (kv, vv)
           return $ CQLMap $ DMS.fromList ls
   put (CQLMap m) = do
       let n = DMS.size m
       put (fromIntegral n :: Int32)
       forM_ (DMS.toList m) (\(k, v) -> do
-        let l = LongStr $ (addLength . runPut . put) k <> (addLength . runPut . put) v
-        put l)
+        let l = (addLength . runPut . put) k <> (addLength . runPut . put) v
+        putLazyByteString l)
 
 
 instance (Binary a, Ord a) => Binary (CQLSet a) where
@@ -75,14 +79,21 @@ instance (Binary a, Ord a) => Binary (CQLSet a) where
       else
         do
           num <- get :: Get Int32
-          ls <- replicateM (fromIntegral num :: Int) (get :: Get a)
+          ls <- replicateM (fromIntegral num :: Int) getValue
           return $ CQLSet $ Set.fromList ls
   put (CQLSet s) = do
       let n = Set.size s
       put (fromIntegral n :: Int32)
       forM_ (Set.toList s) (\el -> do
-        let l = LongStr $ (addLength . runPut .put) el
-        put l)
+        let l = (addLength . runPut .put) el
+        putLazyByteString l)
+
+
+getValue :: (Binary a) => Get a
+getValue = do
+            r <- get :: Get Bytes
+            let Bytes b = r
+            return $ runGet get b
 
 
 instance (Binary a, Ord a) => Binary (CQLList a) where
@@ -94,14 +105,14 @@ instance (Binary a, Ord a) => Binary (CQLList a) where
       else
         do
           num <- get :: Get Int32
-          ls <- replicateM (fromIntegral num :: Int) (get :: Get a)
+          ls <- replicateM (fromIntegral num :: Int) getValue
           return $ CQLList ls
   put (CQLList ls) = do
       let n = List.length ls
       put (fromIntegral n :: Int32)
       forM_ ls (\ el -> do
-        let l = LongStr $ (addLength . runPut . put) el
-        put l)
+        let l = (addLength . runPut . put) el
+        putLazyByteString l)
 
 instance Binary CQLString where
   get = (CQLString . DBL.toStrict) <$> getRemainingLazyByteString
