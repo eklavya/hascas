@@ -45,7 +45,9 @@ import           Text.Printf                    (printf)
 
 
 class Batchable a where
-  runBatch :: a -> ExceptT ShortStr (ReaderT Candle IO) [Row]
+  -- | Run a batch query.
+  runBatch :: a -- ^ A batchable query, currently only logged batches are supported.
+              -> ExceptT ShortStr (ReaderT Candle IO) [Row]
 
 newtype BatchQuery = BatchQuery DBL.ByteString
 
@@ -72,7 +74,7 @@ newtype ShortStr = ShortStr DBL.ByteString
   deriving(Eq, Ord, Show)
 
 newtype LongStr = LongStr DBL.ByteString
-  deriving(Show)
+  deriving(Show, Eq, Ord)
 
 newtype Bytes = Bytes DBL.ByteString
   deriving(Show, Eq, Ord)
@@ -80,6 +82,7 @@ newtype Bytes = Bytes DBL.ByteString
 newtype ShortBytes = ShortBytes ByteString
   deriving(Show)
 
+-- | Consistency levels.
 data Consistency = ANY | ONE | TWO | THREE | QUORUM | ALL | LOCAL_QUORUM | EACH_QUORUM
                   | SERIAL | LOCAL_SERIAL | LOCAL_ONE
   deriving(Eq, Generic)
@@ -142,14 +145,19 @@ data Rows = Rows {
 }
   deriving(Show)
 
+-- | Row result type.
 type Row = DMS.Map CQLString (Word16, Maybe Word16, Maybe Word16, Bytes)
 
 
+-- | Auto derivable class to get records from result rows.
 class BuildRec a where
   fromRow :: Row -> Maybe a
 
+-- | All field types must implement this class.
 class FromCQL a where
-  fromCQL :: Row -> CQLString -> Maybe a
+  fromCQL :: Row -- ^ Result row
+             -> CQLString -- ^ Field name that we want to get
+             -> Maybe a
 
 instance Monoid ShortStr where
   mempty = ShortStr ""

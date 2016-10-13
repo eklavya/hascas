@@ -3,6 +3,8 @@ Cassandra CQL driver for haskell
 
 This is a *work in progress* driver for cassandra.
 
+GHC 7.10.3 and 8.0.x are supported.
+
 It currently has:
 * Select
 * Insert
@@ -10,8 +12,11 @@ It currently has:
 * Delete
 * Prepared Queries
 * Batch Queries
-* Get Records
+* Automatic Records Conversion
 * Collections
+
+
+**The driver gets the list of all nodes in the cluster and load balances amongst them.**
 
 # Example
 Look at the project in the example directory.

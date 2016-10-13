@@ -52,12 +52,14 @@ instance Batchable LoggedBatch where
       Right (RRows rows) -> return rows
 
 
+-- | Create a prepared batch statement with Prepared query and parameters.
 prepBatch :: Prepared -> [Put] -> LoggedBatch
 prepBatch (Prepared pid) ks =
   let b = encode (1::Int8) <> encode pid <> encode (fromIntegral (Data.List.length ks) :: Int16) <> mconcat (fmap (addLength . runPut) ks) in
     LoggedBatch [b]
 
 
+-- | Create a simple batch statement, with query string and parameters.
 batch :: Q -> LoggedBatch
 batch (Query (ShortStr q) bs) =
   let b = encode (0::Int8) <> encode (fromIntegral (DBL.length q) :: Int32) <> q <> encode (fromIntegral (Data.List.length bs) :: Int16) <> mconcat (fmap DBL.fromStrict bs) in

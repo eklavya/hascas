@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP               #-}
 {-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE QuasiQuotes       #-}
@@ -34,8 +35,13 @@ rtrnStmt names conName = [noBindS (appE (varE $ mkName "return") (applyRec (appE
 
 applyRec = foldl (\ex nm -> appE ex (varE nm))
 
+-- | Derives BuildRec instances for record types.
 deriveBuildRec a = do
+#if __GLASGOW_HASKELL__ >= 800
+  TyConI (DataD _ cName _ _ constructors _) <- reify a
+#else
   TyConI (DataD _ cName _ constructors _) <- reify a
+#endif
   case head constructors of
     (RecC conName args) -> do
       names <- genNames $ length args

@@ -77,8 +77,8 @@ prepare q = do
   liftIO $ atomically $ writeTBQueue driverQ (LongStr hd, 9, mvar)
   res <- liftIO $ takeMVar mvar
   case res of
-    Left e -> throwError e
-    Right (RPrepared sb) -> return $ Prepared sb
+      Left e -> throwError e
+      Right (RPrepared sb) -> return $ Prepared sb
 
 
 runCQL :: Consistency -> Q -> ExceptT ShortStr (ReaderT Candle IO) [Row]
