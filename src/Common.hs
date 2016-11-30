@@ -151,6 +151,7 @@ type Row = DMS.Map CQLString (Word16, Maybe Word16, Maybe Word16, Bytes)
 
 -- | Auto derivable class to get records from result rows.
 class BuildRec a where
+  -- | Get the result from a row.
   fromRow :: Row -> Maybe a
 
 -- | All field types must implement this class.

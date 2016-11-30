@@ -41,6 +41,7 @@ import           Network
 
 
 instance Batchable LoggedBatch where
+  -- | Execute your batch query
   runBatch (LoggedBatch qs) = do
     (Candle driverQ)  <- ask
     mvar <- liftIO newEmptyMVar
@@ -48,7 +49,7 @@ instance Batchable LoggedBatch where
     liftIO $ atomically $ writeTBQueue driverQ (LongStr q, 13, mvar)
     res <- liftIO $ takeMVar mvar
     case res of
-      Left e -> throwError e
+      Left e             -> throwError e
       Right (RRows rows) -> return rows
 
 

@@ -1,7 +1,7 @@
 name:                hascas
-version:             0.1.0.0
+version:             1.0.0
 synopsis:            Cassandra driver for haskell
-description:         Please see README.md
+description:         This is a cassandra driver.
 homepage:            https://github.com/eklavya/hascas#readme
 license:             Apache
 license-file:        LICENSE

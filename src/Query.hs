@@ -68,6 +68,7 @@ and' :: (Binary k) =>  String -> k -> Q
 and' n v = Query (ShortStr (" and " <> DBL.fromStrict (C8.pack n) <> " = ? ")) [(DBL.toStrict . addLength . runPut . put) v]
 
 
+-- | Prepare a query, returns a prepared query which can be fed to execCQL for execution.
 prepare :: ByteString -> ExceptT ShortStr (ReaderT Candle IO) Prepared
 prepare q = do
   (Candle driverQ) <- ask
@@ -81,6 +82,7 @@ prepare q = do
       Right (RPrepared sb) -> return $ Prepared sb
 
 
+-- | Run a query directly.
 runCQL :: Consistency -> Q -> ExceptT ShortStr (ReaderT Candle IO) [Row]
 runCQL c (Query (ShortStr q) bs) = do
   (Candle driverQ) <- ask
@@ -96,6 +98,7 @@ runCQL c (Query (ShortStr q) bs) = do
     Right (RRows rows) -> return rows
 
 
+-- | Execute a prepared query.
 execCQL :: Consistency -> Prepared -> [Put] -> ExceptT ShortStr (ReaderT Candle IO) [Row]
 execCQL c (Prepared pid) ls = do
   (Candle driverQ) <- ask
@@ -109,6 +112,10 @@ execCQL c (Prepared pid) ls = do
     Right (RRows rows) -> return rows
 
 
+-- | Combine DSL actions
+-- @
+--  select "demodb.emp" # where' "empID" (104::Int64) # and' "deptID" (15::Int32)
+-- @
 (#) :: Q -> Q -> Q
 (#) (Query s1 bs1) (Query s2 bs2) = Query (s1 <> s2) (bs1 <> bs2)
 

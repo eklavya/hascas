@@ -190,7 +190,8 @@ allConnections :: MVar [(HostName, Handle, MVar [Int16], MVar(IM.IntMap (MVar (E
 allConnections = unsafePerformIO $ newMVar []
 
 
--- | The first
+-- | The first function you need to call. It initializes the driver and connects to the cluster.
+-- You only need to specify one node from your cluster here.
 init :: HostName -> PortID -> ExceptT ShortStr IO Candle
 init host port = do
     streamNum <- liftIO $ newMVar 0
