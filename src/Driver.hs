@@ -14,7 +14,7 @@ import           Control.Concurrent
 import           Control.Concurrent.MVar
 import           Control.Concurrent.STM
 import           Control.Concurrent.STM.TBQueue
-import           Control.Exception              (bracket, catch, mask)
+import           Control.Exception.Safe         (bracket, catchAny, mask)
 import           Control.Monad                  (forM_, forever, replicateM)
 import           Control.Monad.Except
 import           Data.Binary
@@ -33,6 +33,7 @@ import qualified Data.Map.Strict                as DMS
 import           Data.Maybe
 import           Data.Monoid                    as DM
 import           Data.Set
+import           Data.Traversable
 import           Data.UUID
 import           Debug.Trace
 import           Encoding
@@ -72,38 +73,43 @@ prepareQueries = unsafePerformIO $ do
   return mvar
 
 
-receiveThread :: Handle -> MVar [Int16] -> MVar(IM.IntMap (MVar (Either ShortStr Result))) -> IO ()
-receiveThread h streams streamMap = do
-  forkIO $ forever $ do
-        header <- hGet h 9
-        he <- pure $ runGet (get :: Get Header) $ DBL.fromStrict header
-        p <- hGet h (fromIntegral $ len he)
-        case opcode he of
-          0 -> do
-            let (erCode, erMsg) = runGet getErr (DBL.fromStrict p)
-            mvar <- getResHolder he streams streamMap
-            putMVar mvar (Left erMsg)
-          8 -> do
-            let resultType = runGet (get :: Get Int32) (DBL.fromStrict p)
+receiveThread :: HostName -> PortID -> Handle -> MVar [Int16] -> MVar(IM.IntMap (MVar (Either ShortStr Result))) -> IO ()
+receiveThread host port h streams streamMap = do
+  forkIO $ catchAny (forever $ do
+                                header <- hGet h 9
+                                he <- pure $ runGet (get :: Get Header) $ DBL.fromStrict header
+                                p <- hGet h (fromIntegral $ len he)
+                                case opcode he of
+                                  0 -> do
+                                    let (erCode, erMsg) = runGet getErr (DBL.fromStrict p)
+                                    mvar <- getResHolder he streams streamMap
+                                    putMVar mvar (Left erMsg)
+                                  8 -> do
+                                    let resultType = runGet (get :: Get Int32) (DBL.fromStrict p)
 
-            case resultType of
-              1 -> do
-                mvar <- getResHolder he streams streamMap
-                putMVar mvar (Right $ RRows [])
+                                    case resultType of
+                                      1 -> do
+                                        mvar <- getResHolder he streams streamMap
+                                        putMVar mvar (Right $ RRows [])
 
-              2 -> do
-                let rows = content $ runGet getRows (DBL.fromStrict $ C8.drop 4 p)
-                mvar <- getResHolder he streams streamMap
-                putMVar mvar (Right $ RRows rows)
+                                      2 -> do
+                                        let rows = content $ runGet getRows (DBL.fromStrict $ C8.drop 4 p)
+                                        mvar <- getResHolder he streams streamMap
+                                        putMVar mvar (Right $ RRows rows)
 
-              4 -> do
-                let prep = runGet (get :: Get ShortBytes) (DBL.fromStrict $ C8.drop 4 p)
-                mvar <- getResHolder he streams streamMap
-                putMVar mvar (Right $ RPrepared prep)
+                                      4 -> do
+                                        let prep = runGet (get :: Get ShortBytes) (DBL.fromStrict $ C8.drop 4 p)
+                                        mvar <- getResHolder he streams streamMap
+                                        putMVar mvar (Right $ RPrepared prep)
 
-              5 -> do
-                mvar <- getResHolder he streams streamMap
-                putMVar mvar (Right $ RRows [])
+                                      5 -> do
+                                        mvar <- getResHolder he streams streamMap
+                                        putMVar mvar (Right $ RRows [])) (\e -> do
+                                                                                  print "error in receiving"
+                                                                                  sm <- takeMVar streamMap
+                                                                                  nm <- sequence $ fmap (\mvar -> tryPutMVar mvar (Left $ ShortStr $ DBL.fromStrict $ C8.pack $ "connection to node " <> show host <> " was lost")) sm
+                                                                                  putMVar streamMap sm)
+
           -- 12 -> do
           --   print "something happened"
           --   print $ runGet (get :: Get ShortStr) (DBL.fromStrict p)
@@ -122,8 +128,8 @@ getResHolder he1 streams streamMap = do
           return mvar
 
 
-someDef :: Handle -> MVar [Int16] -> MVar (IM.IntMap (MVar (Either ShortStr Result))) -> (LongStr, Word8, MVar (Either ShortStr Result)) -> IO ()
-someDef h streams streamMap (bs, opc, mvar) = do
+writeQuery :: Handle -> MVar [Int16] -> MVar (IM.IntMap (MVar (Either ShortStr Result))) -> (LongStr, Word8, MVar (Either ShortStr Result)) -> IO ()
+writeQuery h streams streamMap (bs, opc, mvar) = do
       strs <- takeMVar streams
       case Data.List.uncons strs of
         Just (i, strsTail) -> do
@@ -137,26 +143,32 @@ someDef h streams streamMap (bs, opc, mvar) = do
 
         Nothing -> do
           putMVar streams strs
-          someDef h streams streamMap (bs, opc, mvar)
+          writeQuery h streams streamMap (bs, opc, mvar)
 
 
-sendThread :: Handle -> MVar [Int16] -> MVar(IM.IntMap (MVar (Either ShortStr Result))) -> TBQueue (LongStr, Word8, MVar (Either ShortStr Result)) -> IO ()
-sendThread h streams streamMap driverQ = do
-  forkIO $ forever $ do
+sendThread :: HostName -> PortID -> Handle -> MVar [Int16] -> MVar(IM.IntMap (MVar (Either ShortStr Result))) -> TBQueue (LongStr, Word8, MVar (Either ShortStr Result)) -> IO ()
+sendThread host port h streams streamMap driverQ = do
+  forkIO $ catchAny (forever $ do
           (bs, opc, mvar) <- atomically $ readTBQueue driverQ
           when (opc == 9) $ do
              pq <- takeMVar prepareQueries
              putMVar prepareQueries (Data.Set.insert bs pq)
              cons <- readMVar allConnections
-             mvars <- forM cons $ \(_, h', str, strMap) -> do
+             mvars <- forM cons $ \(_, _, h', str, strMap) -> do
                mv <- newEmptyMVar
-               someDef h' str strMap (bs, opc, mv)
+               writeQuery h' str strMap (bs, opc, mv)
                return mv
              forkIO $ do
                ls <- sequence $ fmap (\mva -> do {a <- takeMVar mva; return a}) mvars
                putMVar mvar $ Data.List.foldl' (\b a -> if isLeft a then a else b) (Data.List.head ls) (Data.List.tail ls)
              return ()
-          when (opc /= 9) $ someDef h streams streamMap (bs, opc, mvar)
+          when (opc /= 9) $ writeQuery h streams streamMap (bs, opc, mvar)) (\e -> do
+                                                                                  sm <- takeMVar streamMap
+                                                                                  nm <- sequence $ fmap (\mvar -> tryPutMVar mvar (Left $ ShortStr $ DBL.fromStrict $ C8.pack $ "connection to node " <> show host <> " was lost")) sm
+                                                                                  putMVar streamMap sm
+                                                                                  (host, port, h, streams, streamMap) <- setupNode host port
+                                                                                  sendThread host port h streams streamMap driverQ
+                                                                                  receiveThread host port h streams streamMap)
   return ()
 
 
@@ -186,8 +198,18 @@ getPeers h = do
 
 
 {-# NOINLINE allConnections #-}
-allConnections :: MVar [(HostName, Handle, MVar [Int16], MVar(IM.IntMap (MVar (Either ShortStr Result))))]
+allConnections :: MVar [(HostName, PortID, Handle, MVar [Int16], MVar(IM.IntMap (MVar (Either ShortStr Result))))]
 allConnections = unsafePerformIO $ newMVar []
+
+
+setupNode peer port = catchAny (do
+  streams <- newMVar ([0..32767] :: [Int16])
+  streamMap <- newMVar (IM.empty :: (IM.IntMap (MVar (Either ShortStr Result))))
+  h <- connectTo peer port
+  startUp h
+  return (peer, port, h, streams, streamMap)) (\e -> do
+                                                  threadDelay 1000000
+                                                  setupNode peer port)
 
 
 -- | The first function you need to call. It initializes the driver and connects to the cluster.
@@ -208,18 +230,11 @@ init host port = do
       Left err -> throwError err
       Right rows -> do
         let peers = (\(CQLString p) -> Data.List.concat <$> Data.List.intersperse "." $ fmap show (unpack p)) <$> catMaybes (fmap (\r -> fromCQL r (CQLString "peer")::Maybe CQLString) rows)
-        oCons <- liftIO $ sequence $ fmap (\peer -> do
-                        streams <- newMVar ([0..32767] :: [Int16])
-                        streamMap <- newMVar (IM.empty :: (IM.IntMap (MVar (Either ShortStr Result))))
-                        h <- connectTo peer port
-                        startUp h
-                        -- registerForEvents h
-                        return (peer, h, streams, streamMap)
-                    ) peers
-        let connections = (host, h, streams, streamMap) : oCons
+        oCons <- liftIO $ sequence $ fmap (\peer -> setupNode peer port) peers
+        let connections = (host, port, h, streams, streamMap) : oCons
         allCon <- liftIO $ takeMVar allConnections
         liftIO $ putMVar allConnections connections
-        forM_ connections (\(_, h, streams, streamMap) -> do
-          liftIO $ receiveThread h streams streamMap
-          liftIO $ sendThread h streams streamMap driverQ)
+        forM_ connections (\(host, port, h, streams, streamMap) -> do
+          liftIO $ receiveThread host port h streams streamMap
+          liftIO $ sendThread host port h streams streamMap driverQ)
         return $ Candle driverQ

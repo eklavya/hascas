@@ -121,6 +121,7 @@ main = do
 module CQL (
            Driver.init,
            Consistency(..),
+           Candle,
            -- ** Data Types
            Rows,
            Row,
@@ -130,6 +131,8 @@ module CQL (
            CQLMap(..),
            CQLSet(..),
            CQLList(..),
+           ShortStr(..),
+           LongStr(..),
            -- ** Auto derive conversion for record types
            deriveBuildRec,
            fromRow,
@@ -145,10 +148,13 @@ module CQL (
            where',
            and',
            -- ** Prepare and run queries
+           Prepared,
            runCQL,
            prepare,
            execCQL,
            -- ** Batching
+           LoggedBatch,
+           BatchQuery,
            batch,
            prepBatch,
            runBatch) where

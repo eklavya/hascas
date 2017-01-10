@@ -38,6 +38,7 @@ import           Driver
 import           GHC.Generics                   (Generic)
 import           GHC.IO.Handle                  (hClose, hFlush)
 import           Network
+import           System.Timeout
 
 
 create :: String -> Q
@@ -76,10 +77,11 @@ prepare q = do
   let len = fromIntegral (C8.length q)::Int32
   let hd = encode len <> DBL.fromStrict q
   liftIO $ atomically $ writeTBQueue driverQ (LongStr hd, 9, mvar)
-  res <- liftIO $ takeMVar mvar
+  res <- liftIO $ timeout 5000000 $ takeMVar mvar
   case res of
-      Left e -> throwError e
-      Right (RPrepared sb) -> return $ Prepared sb
+      Just (Left e)               -> throwError e
+      Just (Right (RPrepared sb)) -> return $ Prepared sb
+      _                           -> throwError $ ShortStr "timed out"
 
 
 -- | Run a query directly.
@@ -92,11 +94,11 @@ runCQL c (Query (ShortStr q) bs) = do
   let len = fromIntegral (DBL.length q)::Int32
   let hd = encode len <> q'
   liftIO $ atomically $ writeTBQueue driverQ (LongStr hd, 7, mvar)
-  res <- liftIO $ takeMVar mvar
+  res <- liftIO $ timeout 5000000 $ takeMVar mvar
   case res of
-    Left e -> throwError e
-    Right (RRows rows) -> return rows
-
+    Just (Left e)             -> throwError e
+    Just (Right (RRows rows)) -> return rows
+    _                         -> throwError $ ShortStr "timed out"
 
 -- | Execute a prepared query.
 execCQL :: Consistency -> Prepared -> [Put] -> ExceptT ShortStr (ReaderT Candle IO) [Row]
@@ -106,10 +108,11 @@ execCQL c (Prepared pid) ls = do
   let flag = if Data.List.null ls then 0x00 else 0x01
   let q = encode pid <> (encode c <> encode (flag :: Int8)) <> encode (fromIntegral (Data.List.length ls) :: Int16) <> mconcat (fmap (addLength . runPut) ls)
   liftIO $ atomically $ writeTBQueue driverQ (LongStr q, 10, mvar)
-  res <- liftIO $ takeMVar mvar
+  res <- liftIO $ timeout 5000000 $ takeMVar mvar
   case res of
-    Left e -> throwError e
-    Right (RRows rows) -> return rows
+    Just (Left e)             -> throwError e
+    Just (Right (RRows rows)) -> return rows
+    _                         -> throwError $ ShortStr "timed out"
 
 
 -- | Combine DSL actions
