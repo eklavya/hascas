@@ -58,7 +58,7 @@ deriveBuildRec ''Emp
 
 main :: IO ()
 main = do
-    cand <- runExceptT $ CQL.init "127.0.0.1" (PortNumber 9042)
+    cand <- runExceptT $ CQL.init "127.0.0.1" (PortNumber 9042) (RetryInterval 1000000)
     case cand of
       Left err -> print err
       Right candle -> do

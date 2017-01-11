@@ -4,7 +4,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
 
-module Driver (Driver.init, Driver.allConnections) where
+module Driver (Driver.init, Driver.allConnections, Driver.RetryInterval(..)) where
 
 
 import           Codec
@@ -73,8 +73,8 @@ prepareQueries = unsafePerformIO $ do
   return mvar
 
 
-receiveThread :: HostName -> PortID -> Handle -> MVar [Int16] -> MVar(IM.IntMap (MVar (Either ShortStr Result))) -> IO ()
-receiveThread host port h streams streamMap = do
+receiveThread :: HostName -> PortID -> RetryInterval -> Handle -> MVar [Int16] -> MVar(IM.IntMap (MVar (Either ShortStr Result))) -> IO ()
+receiveThread host port ri h streams streamMap = do
   forkIO $ catchAny (forever $ do
                                 header <- hGet h 9
                                 he <- pure $ runGet (get :: Get Header) $ DBL.fromStrict header
@@ -146,8 +146,8 @@ writeQuery h streams streamMap (bs, opc, mvar) = do
           writeQuery h streams streamMap (bs, opc, mvar)
 
 
-sendThread :: HostName -> PortID -> Handle -> MVar [Int16] -> MVar(IM.IntMap (MVar (Either ShortStr Result))) -> TBQueue (LongStr, Word8, MVar (Either ShortStr Result)) -> IO ()
-sendThread host port h streams streamMap driverQ = do
+sendThread :: HostName -> PortID -> RetryInterval -> Handle -> MVar [Int16] -> MVar(IM.IntMap (MVar (Either ShortStr Result))) -> TBQueue (LongStr, Word8, MVar (Either ShortStr Result)) -> IO ()
+sendThread host port ri h streams streamMap driverQ = do
   forkIO $ catchAny (forever $ do
           (bs, opc, mvar) <- atomically $ readTBQueue driverQ
           when (opc == 9) $ do
@@ -166,9 +166,9 @@ sendThread host port h streams streamMap driverQ = do
                                                                                   sm <- takeMVar streamMap
                                                                                   nm <- sequence $ fmap (\mvar -> tryPutMVar mvar (Left $ ShortStr $ DBL.fromStrict $ C8.pack $ "connection to node " <> show host <> " was lost")) sm
                                                                                   putMVar streamMap sm
-                                                                                  (host, port, h, streams, streamMap) <- setupNode host port
-                                                                                  sendThread host port h streams streamMap driverQ
-                                                                                  receiveThread host port h streams streamMap)
+                                                                                  (host, port, h, streams, streamMap) <- setupNode host port ri
+                                                                                  sendThread host port ri h streams streamMap driverQ
+                                                                                  receiveThread host port ri h streams streamMap)
   return ()
 
 
@@ -202,20 +202,25 @@ allConnections :: MVar [(HostName, PortID, Handle, MVar [Int16], MVar(IM.IntMap 
 allConnections = unsafePerformIO $ newMVar []
 
 
-setupNode peer port = catchAny (do
+setupNode peer port rInt@(RetryInterval ri) = catchAny (do
   streams <- newMVar ([0..32767] :: [Int16])
   streamMap <- newMVar (IM.empty :: (IM.IntMap (MVar (Either ShortStr Result))))
   h <- connectTo peer port
   startUp h
   return (peer, port, h, streams, streamMap)) (\e -> do
-                                                  threadDelay 1000000
-                                                  setupNode peer port)
+                                                  threadDelay ri
+                                                  setupNode peer port rInt)
+
+
+
+newtype RetryInterval = RetryInterval Int
 
 
 -- | The first function you need to call. It initializes the driver and connects to the cluster.
 -- You only need to specify one node from your cluster here.
-init :: HostName -> PortID -> ExceptT ShortStr IO Candle
-init host port = do
+-- Retryinterval is the interval with which connection to a node will be retried in case of disconnection.
+init :: HostName -> PortID -> RetryInterval -> ExceptT ShortStr IO Candle
+init host port ri = do
     streamNum <- liftIO $ newMVar 0
     streams <- liftIO $ newMVar ([0..32767] :: [Int16])
     streamMap <- liftIO $ newMVar (IM.empty :: (IM.IntMap (MVar (Either ShortStr Result))))
@@ -230,11 +235,11 @@ init host port = do
       Left err -> throwError err
       Right rows -> do
         let peers = (\(CQLString p) -> Data.List.concat <$> Data.List.intersperse "." $ fmap show (unpack p)) <$> catMaybes (fmap (\r -> fromCQL r (CQLString "peer")::Maybe CQLString) rows)
-        oCons <- liftIO $ sequence $ fmap (\peer -> setupNode peer port) peers
+        oCons <- liftIO $ sequence $ fmap (\peer -> setupNode peer port ri) peers
         let connections = (host, port, h, streams, streamMap) : oCons
         allCon <- liftIO $ takeMVar allConnections
         liftIO $ putMVar allConnections connections
         forM_ connections (\(host, port, h, streams, streamMap) -> do
-          liftIO $ receiveThread host port h streams streamMap
-          liftIO $ sendThread host port h streams streamMap driverQ)
+          liftIO $ receiveThread host port ri h streams streamMap
+          liftIO $ sendThread host port ri h streams streamMap driverQ)
         return $ Candle driverQ

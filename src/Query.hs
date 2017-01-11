@@ -38,7 +38,7 @@ import           Driver
 import           GHC.Generics                   (Generic)
 import           GHC.IO.Handle                  (hClose, hFlush)
 import           Network
-import           System.Timeout
+
 
 
 create :: String -> Q
@@ -71,17 +71,16 @@ and' n v = Query (ShortStr (" and " <> DBL.fromStrict (C8.pack n) <> " = ? ")) [
 
 -- | Prepare a query, returns a prepared query which can be fed to execCQL for execution.
 prepare :: ByteString -> ExceptT ShortStr (ReaderT Candle IO) Prepared
-prepare q = do
+prepare q  = do
   (Candle driverQ) <- ask
   mvar <- liftIO newEmptyMVar
   let len = fromIntegral (C8.length q)::Int32
   let hd = encode len <> DBL.fromStrict q
   liftIO $ atomically $ writeTBQueue driverQ (LongStr hd, 9, mvar)
-  res <- liftIO $ timeout 5000000 $ takeMVar mvar
+  res <- liftIO $ takeMVar mvar
   case res of
-      Just (Left e)               -> throwError e
-      Just (Right (RPrepared sb)) -> return $ Prepared sb
-      _                           -> throwError $ ShortStr "timed out"
+      Left e               -> throwError e
+      Right (RPrepared sb) -> return $ Prepared sb
 
 
 -- | Run a query directly.
@@ -94,11 +93,11 @@ runCQL c (Query (ShortStr q) bs) = do
   let len = fromIntegral (DBL.length q)::Int32
   let hd = encode len <> q'
   liftIO $ atomically $ writeTBQueue driverQ (LongStr hd, 7, mvar)
-  res <- liftIO $ timeout 5000000 $ takeMVar mvar
+  res <- liftIO $ takeMVar mvar
   case res of
-    Just (Left e)             -> throwError e
-    Just (Right (RRows rows)) -> return rows
-    _                         -> throwError $ ShortStr "timed out"
+    Left e             -> throwError e
+    Right (RRows rows) -> return rows
+
 
 -- | Execute a prepared query.
 execCQL :: Consistency -> Prepared -> [Put] -> ExceptT ShortStr (ReaderT Candle IO) [Row]
@@ -108,11 +107,10 @@ execCQL c (Prepared pid) ls = do
   let flag = if Data.List.null ls then 0x00 else 0x01
   let q = encode pid <> (encode c <> encode (flag :: Int8)) <> encode (fromIntegral (Data.List.length ls) :: Int16) <> mconcat (fmap (addLength . runPut) ls)
   liftIO $ atomically $ writeTBQueue driverQ (LongStr q, 10, mvar)
-  res <- liftIO $ timeout 5000000 $ takeMVar mvar
+  res <- liftIO $ takeMVar mvar
   case res of
-    Just (Left e)             -> throwError e
-    Just (Right (RRows rows)) -> return rows
-    _                         -> throwError $ ShortStr "timed out"
+    Left e             -> throwError e
+    Right (RRows rows) -> return rows
 
 
 -- | Combine DSL actions

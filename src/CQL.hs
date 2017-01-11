@@ -22,13 +22,13 @@ take care of the rest.
 Initialize the driver by calling
 
 @
-  CQL.init host port
+  CQL.init host port retryInterval
 @
 
 for example
 
 @
-  CQL.init "127.0.0.1" (PortNumber 9042)
+  CQL.init "127.0.0.1" (PortNumber 9042) (RetryInterval 1000000)
 @
 
 Example:
@@ -51,7 +51,7 @@ deriveBuildRec ''Emp
 
 main :: IO ()
 main = do
-    candle <- CQL.init "127.0.0.1" (PortNumber 9042)
+    candle <- CQL.init "127.0.0.1" (PortNumber 9042) (RetryInterval 1000000)
 
     res <- flip runReaderT candle $ runExceptT $ do
       let q = create "keyspace demodb WITH REPLICATION = {'class' : 'SimpleStrategy','replication_factor': 1}"
@@ -122,6 +122,7 @@ module CQL (
            Driver.init,
            Consistency(..),
            Candle,
+           Driver.RetryInterval(..),
            -- ** Data Types
            Rows,
            Row,
