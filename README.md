@@ -14,7 +14,7 @@ It currently has:
 * Batch Queries
 * Automatic Records Conversion
 * Collections
-
+* Automatic reconnection on connection errors
 
 **The driver gets the list of all nodes in the cluster and load balances amongst them.**
 
@@ -40,7 +40,7 @@ deriveBuildRec ''Emp
 
 main :: IO ()
 main = do
-    candle <- CQL.init "127.0.0.1" (PortNumber 9042)
+    candle <- CQL.init "127.0.0.1" (PortNumber 9042) (RetryInterval 1000000)
 
     res <- flip runReaderT candle $ runExceptT $ do
       let q = create "keyspace demodb WITH REPLICATION = {'class' : 'SimpleStrategy','replication_factor': 1}"
